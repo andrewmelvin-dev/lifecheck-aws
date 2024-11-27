@@ -49,10 +49,6 @@ For detailed instructions on verification refer to the official AWS documentatio
 * **Google API Client ID:** OAuth authentication via Google will be used to allow access to the settings application. Refer to the following documentation: https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid
 * **AWS Account:** You'll need an AWS account to deploy and manage the Lambda function.
 * **AWS SAM CLI**: Install the AWS SAM CLI. Refer to the official documentation for instructions: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
-* **Public/private key generation:**
-   * You'll need a public key (in PEM format) for JWT token verification. This will be used to verify (in addition to the API key used by the API gateway) the authenticity of requests, preventing unauthorized access and potential service disruptions of Lifecheck's intended operations.
-   * If you don't have one, you can generate one using tools like OpenSSL or ssh-keygen. Refer to this guide for generating an RSA key pair: https://www.ssh.com/academy/ssh/keygen
-   * Keep the private key in a safe and secure location for use later on when setting up the `lifecheck-client` Windows service.
 
 ## Setup and deployment
 
@@ -74,7 +70,6 @@ For detailed instructions on verification refer to the official AWS documentatio
    * Enter the following details into the guided deployment:
       * **Stack Name**: `lifecheck-aws`
       * **AWS Regions**: The region name that is geographically located nearby e.g. ap-southeast-2.
-      * **Parameter PublicKey**: The public key from your public key file. Only include the encoded key itself; omit the encryption method and trailing comment.
       * **Parameter GoogleClientId**: The client ID provided when setting up the new Google API.
       * **Parameter GoogleClientSecret**: The client secret provided when setting up the new Google API.
       * **Parameter GoogleAccountEmailAddress**: The email address of the Google account used to login to the `lifecheck-settings` application - this will also be used as the sending address for Lifecheck notifications.
@@ -114,8 +109,16 @@ This is the SAM template used to generate a CloudFormation template that can be 
     * LifecheckAuthorizerHandler: An authorizer for the settings API gateway that performs OAuth authentication via Google.
     * LifecheckSettingsViewHandler: Processes GET requests for the lifecheck-settings application.
     * LifecheckSettingsUpdateHandler: Processes POST requests from the lifecheck-settings application.
-  * Parameters input that will save configuration data and the public key for JWT verification to Parameter Store in AWS Systems Manager.
+  * Parameters input that will save configuration data to Parameter Store in AWS Systems Manager.
   * API key authentication and usage plans for rate limiting and quota management of the automatic verification API gateway.
+
+### .py Python files ###
+
+See the explanations of the Lambda functions in the template.yaml section above.
+
+### requirements.txt ###
+
+Dependencies used by the Python functions that will be installed and bundled by the SAM build process.
 
 ## TODO: Future enhancements/modifications ##
 
