@@ -1,0 +1,510 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: This template deploys a serverless application for lifecheck verification and notifications
+
+Parameters:
+  GoogleClientId:
+    Type: String
+    Description: The client ID for the application created in Google Developer Console
+  GoogleClientSecret:
+    Type: String
+    Description: The client secret for the application created in Google Developer Console
+  GoogleAccountEmailAddress:
+    Type: String
+    Description: The email address to be verified and used for sending notifications
+  PrimaryContactEmailAddress:
+    Type: String
+    Description: The email address to be verified and used for receiving your personal notifications
+
+Resources:
+  # Handler for lifecheck verification called from the Windows service
+  LifecheckVerificationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./ 
+      Handler: lifecheck-verification.lambda_handler 
+      Runtime: python3.12
+      Description: Lambda function to handle token verification and parameter updates
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:  # Add permission for Parameter Store get/put operations
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:PutParameter
+                - ssm:DeleteParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/last_verification"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token_generation_time"
+      Environment:
+        Variables:
+          LAST_VERIFICATION_PARAM: /lifecheck/last_verification
+          PRIMARY_CONTACT_DATETIME_PARAM: /lifecheck/primary_contact_datetime
+          SECONDARY_CONTACT_DATETIME_PARAM: /lifecheck/secondary_contact_datetime
+          EMERGENCY_CONTACT_DATETIME_PARAM: /lifecheck/emergency_contact_datetime
+          TEMP_TOKEN_PARAM: /lifecheck/temp_token
+          TEMP_TOKEN_GENERATION_TIME_PARAM: /lifecheck/temp_token_generation_time
+
+  # Handler for lifecheck verification called from a URL in an email
+  LifecheckVerificationEmailHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lifecheck-verification-email.lambda_handler 
+      Runtime: python3.12
+      Description: Lambda function to handle email verification
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:  # Add permission for Parameter Store get/put operations
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:PutParameter
+                - ssm:DeleteParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/last_verification"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token_generation_time"
+      Environment:
+        Variables:
+          LAST_VERIFICATION_PARAM: /lifecheck/last_verification
+          PRIMARY_CONTACT_DATETIME_PARAM: /lifecheck/primary_contact_datetime
+          SECONDARY_CONTACT_DATETIME_PARAM: /lifecheck/secondary_contact_datetime
+          EMERGENCY_CONTACT_DATETIME_PARAM: /lifecheck/emergency_contact_datetime
+          TEMP_TOKEN_PARAM: /lifecheck/temp_token
+          TEMP_TOKEN_GENERATION_TIME_PARAM: /lifecheck/temp_token_generation_time
+
+  # Handler for the notification poller called via EventBridge scheduled job
+  LifecheckNotificationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lifecheck-notification.lambda_handler
+      Runtime: python3.12
+      Description: Lambda function to send notifications based on last_verification time
+      Policies:
+        - Statement:  # Add permission for Parameter Store get/put operations
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:PutParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/last_verification"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/google_account_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/temp_token_generation_time"
+        - Statement:  # Add permission for SES send email access
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:ListVerifiedEmailAddresses
+              Resource: "*" # Allow sending email to any address (and limit the "*" to this statement alone)
+      Environment:
+        Variables:
+          LAST_VERIFICATION_PARAM: /lifecheck/last_verification
+          GOOGLE_ACCOUNT_EMAIL_PARAM: /lifecheck/google_account_email
+          PRIMARY_CONTACT_EMAIL_PARAM: /lifecheck/primary_contact_email
+          PRIMARY_CONTACT_MESSAGE_PARAM: /lifecheck/primary_contact_message
+          PRIMARY_CONTACT_DATETIME_PARAM: /lifecheck/primary_contact_datetime
+          SECONDARY_CONTACT_EMAIL_PARAM: /lifecheck/secondary_contact_email
+          SECONDARY_CONTACT_MESSAGE_PARAM: /lifecheck/secondary_contact_message
+          SECONDARY_CONTACT_DATETIME_PARAM: /lifecheck/secondary_contact_datetime
+          EMERGENCY_CONTACT_EMAIL_PARAM: /lifecheck/emergency_contact_email
+          EMERGENCY_CONTACT_MESSAGE_PARAM: /lifecheck/emergency_contact_message
+          EMERGENCY_CONTACT_DATETIME_PARAM: /lifecheck/emergency_contact_datetime
+          TEMP_TOKEN_PARAM: /lifecheck/temp_token
+          TEMP_TOKEN_GENERATION_TIME_PARAM: /lifecheck/temp_token_generation_time
+          EMAIL_VERIFICATION_API_GATEWAY_URL: !Join 
+            - ''
+            - - 'https://'
+              - !Ref LifecheckVerificationEmailApi 
+              - .execute-api.
+              - !Ref 'AWS::Region'
+              - .amazonaws.com/Prod/verify-email
+
+  # Lambda authorizer function that performs authentication for the settings application
+  LifecheckAuthorizerHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lifecheck-authorizer.lambda_handler
+      Runtime: python3.12
+      Description: Lambda function for authentication
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:  # Add permission for Parameter Store get operation
+            - Effect: Allow
+              Action:
+                - ssm:GetParameters
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/google_account_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/google_client_id"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/google_client_secret"
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          GOOGLE_ACCOUNT_EMAIL_PARAM: /lifecheck/google_account_email
+          GOOGLE_CLIENT_ID_PARAM: /lifecheck/google_client_id
+          GOOGLE_CLIENT_SECRET_PARAM: /lifecheck/google_client_secret
+
+  # Handler for the function that provides the settings application HTML/JS
+  LifecheckSettingsViewHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lifecheck-settings-view.lambda_handler
+      Runtime: python3.12
+      Description: Lambda function to provide the settings application HTML/JS
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:  # Add permission for Parameter Store get/put operations
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/last_verification"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_datetime"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_phone"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_datetime"
+      Environment:
+        Variables:
+          LAST_VERIFICATION_PARAM: /lifecheck/last_verification
+          PRIMARY_CONTACT_EMAIL_PARAM: /lifecheck/primary_contact_email
+          PRIMARY_CONTACT_MESSAGE_PARAM: /lifecheck/primary_contact_message
+          PRIMARY_CONTACT_DATETIME_PARAM: /lifecheck/primary_contact_datetime
+          SECONDARY_CONTACT_EMAIL_PARAM: /lifecheck/secondary_contact_email
+          SECONDARY_CONTACT_MESSAGE_PARAM: /lifecheck/secondary_contact_message
+          SECONDARY_CONTACT_DATETIME_PARAM: /lifecheck/secondary_contact_datetime
+          EMERGENCY_CONTACT_EMAIL_PARAM: /lifecheck/emergency_contact_email
+          EMERGENCY_CONTACT_PHONE_PARAM: /lifecheck/emergency_contact_phone
+          EMERGENCY_CONTACT_MESSAGE_PARAM: /lifecheck/emergency_contact_message
+          EMERGENCY_CONTACT_DATETIME_PARAM: /lifecheck/emergency_contact_datetime
+
+  # Handler for the function that updates values for the settings application
+  LifecheckSettingsUpdateHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: lifecheck-settings-update.lambda_handler
+      Runtime: python3.12
+      Description: Lambda function that updates values for the settings application
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:  # Add permission for Parameter Store get and put operations and SES email identity creation
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:PutParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/primary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/secondary_contact_message"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_email"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_phone"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/lifecheck/emergency_contact_message"
+            - Effect: Allow
+              Action:
+                - ses:CreateEmailIdentity
+              Resource: "*"
+      Environment:
+        Variables:
+          REGION: !Ref "AWS::Region"
+          PRIMARY_CONTACT_EMAIL_PARAM: /lifecheck/primary_contact_email
+          PRIMARY_CONTACT_MESSAGE_PARAM: /lifecheck/primary_contact_message
+          SECONDARY_CONTACT_EMAIL_PARAM: /lifecheck/secondary_contact_email
+          SECONDARY_CONTACT_MESSAGE_PARAM: /lifecheck/secondary_contact_message
+          EMERGENCY_CONTACT_EMAIL_PARAM: /lifecheck/emergency_contact_email
+          EMERGENCY_CONTACT_PHONE_PARAM: /lifecheck/emergency_contact_phone
+          EMERGENCY_CONTACT_MESSAGE_PARAM: /lifecheck/emergency_contact_message
+
+  # API Gateway for the verification handler
+  LifecheckVerificationApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      OpenApiVersion: 3.0.1
+      Cors:
+        AllowMethods: "'POST'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        openapi: 3.0.1
+        info:
+          title: Lifecheck Verification API
+          version: '1.0.0'
+        paths:
+          /verify:
+            post:
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LifecheckVerificationHandler.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              security:  # API key required for this method
+                - api_key: [] 
+              responses:
+                '200':
+                  description: Successful response for POST /verify
+        components:
+          securitySchemes:
+            api_key:
+              type: apiKey
+              name: x-api-key
+              in: header
+
+  # API Gateway for the verification email handler
+  LifecheckVerificationEmailApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      OpenApiVersion: 3.0.1
+      Cors:
+        AllowMethods: "'GET'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        openapi: 3.0.1
+        info:
+          title: Lifecheck Verification Email API
+          version: '1.0.0'
+        paths:
+          /verify-email:
+            get:
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LifecheckVerificationEmailHandler.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              parameters:
+                - name: token
+                  in: query
+                  required: true
+                  schema:
+                    type: string
+              responses:
+                '200':
+                  description: Successful response for GET /verify-email
+
+  # API Gateway for the settings application
+  LifecheckSettingsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      OpenApiVersion: 3.0.1
+      Cors:
+        AllowMethods: "'POST,GET'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: LifecheckAuthorizer
+        Authorizers:
+          LifecheckAuthorizer:
+            FunctionArn: !GetAtt LifecheckAuthorizerHandler.Arn
+            FunctionPayloadType: REQUEST
+            Identity:
+              QueryStrings:
+                - code
+              ReauthorizeEvery: 3600
+      DefinitionBody:
+        openapi: 3.0.1
+        info:
+          title: Lifecheck Settings API
+          version: '1.0.0'
+        paths:
+          /settings:
+            get:
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LifecheckSettingsViewHandler.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              responses:
+                '200':
+                  description: Successful response for GET /settings
+            post:
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LifecheckSettingsUpdateHandler.Arn}/invocations
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              responses:
+                '200':
+                  description: Successful response for POST /settings
+
+  # Define the Simple Systems Manager location of the google_client_id parameter
+  GoogleClientIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /lifecheck/google_client_id
+      Type: String
+      Value: !Ref GoogleClientId
+      Description: Contains the Google API client ID
+
+  # Define the Simple Systems Manager location of the google_client_secret parameter
+  GoogleClientSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /lifecheck/google_client_secret
+      Type: String
+      Value: !Ref GoogleClientSecret
+      Description: Contains the Google API client secret
+
+  # Define the Simple Systems Manager location of the google_account_email parameter
+  GoogleAccountEmailAddressParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /lifecheck/google_account_email
+      Type: String
+      Value: !Ref GoogleAccountEmailAddress
+      Description: Contains the email address used for sending notifications
+
+  # Define the Simple Systems Manager location of the primary_contact_email parameter
+  PrimaryContactEmailAddressParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /lifecheck/primary_contact_email
+      Type: String
+      Value: !Ref PrimaryContactEmailAddress
+      Description: Contains the email address used for receiving personal notifications
+
+  # Verify the Google account email address in SES
+  VerifiedGoogleAccountEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref GoogleAccountEmailAddress
+
+  # Verify the primary contact email address in SES
+  VerifiedPrimaryContactEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref PrimaryContactEmailAddress
+
+  # Usage plan for the /verify endpoint
+  LifecheckVerificationUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: LifecheckVerificationApi
+    Properties:
+      ApiStages:
+        - ApiId: !Ref LifecheckVerificationApi
+          Stage: Prod 
+      Throttle:
+        RateLimit: 1    # 1 request per second
+      Quota:
+        Limit: 24
+        Period: DAY
+      Description: Defines the usage plan for the /verify endpoint with rate limiting and quota
+
+  # Usage plan for the /verify-email endpoint
+  LifecheckVerificationEmailUsagePlan: 
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: LifecheckVerificationEmailApi
+    Properties:
+      ApiStages:
+        - ApiId: !Ref LifecheckVerificationEmailApi
+          Stage: Prod 
+      Throttle:
+        RateLimit: 1  # 1 request per second
+      Quota:
+        Limit: 24
+        Period: DAY
+      Description: Defines the usage plan for the /verify-email endpoint with rate limiting and quota
+
+  # Usage plan for the /settings endpoint
+  LifecheckSettingsUsagePlan: 
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: LifecheckSettingsApi
+    Properties:
+      ApiStages:
+        - ApiId: !Ref LifecheckSettingsApi
+          Stage: Prod 
+      Throttle:
+        RateLimit: 1  # 1 request per second
+      Quota:
+        Limit: 24
+        Period: DAY
+      Description: Defines the usage plan for the settings endpoints with rate limiting and quota
+
+  # API key for the /verify endpoint
+  LifecheckVerificationApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: LifecheckVerificationApi
+    Properties:
+      Enabled: true
+      Name: LifecheckVerificationApiKey
+      StageKeys:
+        - RestApiId: !Ref LifecheckVerificationApi
+          StageName: Prod
+      Description: The API key used for authentication and authorization
+
+  # Link the API key to the /verify endpoint
+  ApiKeyUsagePlan:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref LifecheckVerificationApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref LifecheckVerificationUsagePlan
+
+  # EventBridge rule to trigger the notification poller Lambda function every 2 hours
+  NotificationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Triggers the notification poller Lambda function every 2 hours
+      ScheduleExpression: "rate(2 hours)"
+      Targets:
+        - Arn: !GetAtt LifecheckNotificationHandler.Arn
+          Id: LifecheckNotificationTarget
+
+  # Permission for EventBridge to invoke the notification Lambda function
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LifecheckNotificationHandler
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NotificationRule.Arn
+
+Outputs:
+  LifecheckVerificationUrl:
+    Description: URL for the POST verification API Gateway used by the Windows service
+    Value: !Sub "https://${LifecheckVerificationApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/verify"
+  GoogleAPIRedirectUrl:
+    Description: URL for the Google API redirect
+    Value: !Sub "https://${LifecheckSettingsApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/settings"
+  LifecheckSettingsUrl:
+    Description: URL for the settings application
+    Value: !Sub "https://accounts.google.com/o/oauth2/v2/auth?client_id=${GoogleClientId}&redirect_uri=https://${LifecheckSettingsApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/settings&response_type=code&scope=openid%20email"
+  LifecheckApiKeyCLI:
+    Description: The CLI command to use to retrieve the generated API key
+    Value: !Sub "aws apigateway get-api-key --api-key ${LifecheckVerificationApiKey.APIKeyId} --include-value --query \"value\" --output text"
