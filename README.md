@@ -12,6 +12,11 @@ This `lifecheck-aws` project contains Python Lambda functions that will:
 2. Send messages to various contacts after certain time periods have elapsed since the last check in.
 3. Allow the various contact information and message content settings to be updated.
 
+### Example screenshots of the settings application
+
+![Example 1: Lifecheck Settings](images/lifecheck-settings-1.png?raw=true)
+![Example 2: Lifecheck Settings](images/lifecheck-settings-2.png?raw=true)
+
 ## Installation and usage
 
 1. Follow the instructions below to deploy `lifecheck-aws` to AWS.
